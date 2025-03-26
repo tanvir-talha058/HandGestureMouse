@@ -44,7 +44,7 @@ while cap.isOpened():
             middle_x, middle_y = int(landmarks[12].x * screen_width), int(landmarks[12].y * screen_height)
             palm_x, palm_y = int(landmarks[0].x * screen_width), int(landmarks[0].y * screen_height)
 
-            # Cursor Movement with smoothing
+            # Cursor Movement smooth transition
             curr_x = prev_x + (index_x - prev_x) / smooth_factor
             curr_y = prev_y + (index_y - prev_y) / smooth_factor
             pyautogui.moveTo(curr_x, curr_y)

@@ -4,134 +4,123 @@ import pyautogui
 import numpy as np
 import time
 
-# Initialize hand tracking
-mp_hands = mp.solutions.hands
-mp_draw = mp.solutions.drawing_utils
-hands = mp_hands.Hands(min_detection_confidence=0.8, min_tracking_confidence=0.8)
-
-# Screen size
-screen_width, screen_height = pyautogui.size()
-smooth_factor = 7  # Increased for smoother movement
-
-# Gesture Control Variables
-prev_x, prev_y = 0, 0
-click_threshold = 30  # Distance for pinch click
-gesture_cooldown = 1.0  # Prevent rapid gesture activation
-last_gesture_time = 0
-active_gesture = None
-dragging = False  # Track dragging state
-
+# Initialize Video Capture
 cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FPS, 30)  # Set FPS to optimize performance
+screen_w, screen_h = pyautogui.size()
+
+# Initialize MediaPipe Hand Tracking
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.6)
+mp_draw = mp.solutions.drawing_utils
+
+# Smoothing parameters
+smoothening = 5
+prev_x, prev_y = 0, 0
+curr_x, curr_y = 0, 0
+
+# Gesture tracking variables
+last_gesture_time = time.time()
+gesture_cooldown = 1  # 1-second delay for swipe gestures
+active_gesture = None
+
+def fingers_up(hand_landmarks):
+    """Detect which fingers are up (1 = Up, 0 = Down)."""
+    fingers = [0, 0, 0, 0, 0]  # Thumb, Index, Middle, Ring, Pinky
+
+    # Index Finger - (8 is above 6)
+    if hand_landmarks[8][1] < hand_landmarks[6][1]:
+        fingers[1] = 1  # Index Finger is Up
+
+    # Other Fingers - (Closed if their tips are below their lower joint)
+    fingers[2] = 0 if hand_landmarks[12][1] > hand_landmarks[10][1] else 1  # Middle
+    fingers[3] = 0 if hand_landmarks[16][1] > hand_landmarks[14][1] else 1  # Ring
+    fingers[4] = 0 if hand_landmarks[20][1] > hand_landmarks[18][1] else 1  # Pinky
+
+    return fingers
 
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
         break
 
-    frame = cv2.flip(frame, 1)  # Mirror image
+    frame = cv2.flip(frame, 1)  # Mirror the camera
+    frame_h, frame_w, _ = frame.shape
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    result = hands.process(rgb_frame)
+    results = hands.process(rgb_frame)
 
-    current_time = time.time()  # Track gesture timing
+    if results.multi_hand_landmarks:
+        for hand_landmarks in results.multi_hand_landmarks:
+            # Get landmark positions
+            lm_list = []
+            for id, lm in enumerate(hand_landmarks.landmark):
+                x, y = int(lm.x * frame_w), int(lm.y * frame_h)
+                lm_list.append((x, y))
 
-    if result.multi_hand_landmarks:
-        for hand_landmarks in result.multi_hand_landmarks:
-            landmarks = hand_landmarks.landmark
+            fingers = fingers_up(lm_list)
 
-            # Get important points
-            index_x, index_y = int(landmarks[8].x * screen_width), int(landmarks[8].y * screen_height)
-            thumb_x, thumb_y = int(landmarks[4].x * screen_width), int(landmarks[4].y * screen_height)
-            middle_x, middle_y = int(landmarks[12].x * screen_width), int(landmarks[12].y * screen_height)
-            palm_x, palm_y = int(landmarks[0].x * screen_width), int(landmarks[0].y * screen_height)
+            # Only move cursor if index finger is up and others are down
+            if fingers == [0, 1, 0, 0, 0]:  
+                index_x, index_y = lm_list[8]  # Index Finger Tip
+                curr_x = np.interp(index_x, [100, frame_w - 100], [0, screen_w])
+                curr_y = np.interp(index_y, [100, frame_h - 100], [0, screen_h])
 
-            # Cursor Movement smooth transition
-            curr_x = prev_x + (index_x - prev_x) / smooth_factor
-            curr_y = prev_y + (index_y - prev_y) / smooth_factor
-            pyautogui.moveTo(curr_x, curr_y)
-            prev_x, prev_y = curr_x, curr_y
+                # Smoothing cursor movement
+                prev_x = (prev_x * (smoothening - 1) + curr_x) / smoothening
+                prev_y = (prev_y * (smoothening - 1) + curr_y) / smoothening
+                pyautogui.moveTo(prev_x, prev_y, duration=0.1)
 
-            # Click detection (Pinch - Index & Thumb)
-            distance_click = np.hypot(index_x - thumb_x, index_y - thumb_y)
-            if distance_click < click_threshold:
-                if active_gesture != "click" or (current_time - last_gesture_time) > gesture_cooldown:
-                    pyautogui.click()
-                    active_gesture = "click"
-                    last_gesture_time = current_time
+            # Left Click (Thumb + Index Finger Pinch)
+            if fingers[1] == 1 and fingers[0] == 1 and fingers[2] == 0:
+                pyautogui.click()
+                time.sleep(0.2)
 
-            # Right Click (Pinch - Middle & Thumb)
-            distance_right_click = np.hypot(middle_x - thumb_x, middle_y - thumb_y)
-            if distance_right_click < click_threshold:
-                if active_gesture != "right_click" or (current_time - last_gesture_time) > gesture_cooldown:
-                    pyautogui.rightClick()
-                    active_gesture = "right_click"
-                    last_gesture_time = current_time
+            # Right Click (Thumb + Middle Finger Pinch)
+            if fingers[1] == 0 and fingers[2] == 1 and fingers[0] == 1:
+                pyautogui.rightClick()
+                time.sleep(0.2)
 
-            # Drag & Drop (Hold Pinch)
-            if distance_click < click_threshold:
-                if not dragging:
-                    pyautogui.mouseDown()
-                    dragging = True
-            else:
-                if dragging:
-                    pyautogui.mouseUp()
-                    dragging = False
+            # Scroll (Move Two Fingers Up/Down)
+            if fingers[1] == 1 and fingers[2] == 1:
+                pyautogui.scroll(-10 if lm_list[8][1] < lm_list[12][1] else 10)
 
-            # Scroll (Swipe Two Fingers Up/Down)
-            scroll_distance = abs(middle_y - index_y)
-            if scroll_distance > 50:
-                if middle_y > index_y:
-                    pyautogui.scroll(10)  # Scroll Up
-                else:
-                    pyautogui.scroll(-10)  # Scroll Down
+            # Zoom In/Out (Pinch Open/Close)
+            pinch_distance = abs(lm_list[4][0] - lm_list[8][0])
+            if pinch_distance < 30:
+                pyautogui.hotkey('ctrl', '+')
+                time.sleep(0.2)
+            elif pinch_distance > 100:
+                pyautogui.hotkey('ctrl', '-')
+                time.sleep(0.2)
 
-            # Zoom In/Out (Pinch Open/Close with Index & Thumb)
-            pinch_distance = np.hypot(index_x - thumb_x, index_y - thumb_y)
-            if pinch_distance > 120:
-                if active_gesture != "zoom_in" or (current_time - last_gesture_time) > gesture_cooldown:
-                    pyautogui.hotkey('ctrl', '+')  # Zoom In
-                    active_gesture = "zoom_in"
-                    last_gesture_time = current_time
-            elif pinch_distance < 20:
-                if active_gesture != "zoom_out" or (current_time - last_gesture_time) > gesture_cooldown:
-                    pyautogui.hotkey('ctrl', '-')  # Zoom Out
-                    active_gesture = "zoom_out"
-                    last_gesture_time = current_time
+            # Detect Swipe Gestures for Navigation
+            palm_x, palm_y = lm_list[0]  # Palm Center
+            prev_palm_x, prev_palm_y = prev_x, prev_y  # Store previous palm position
+            hand_movement_x = palm_x - prev_palm_x
 
-            # Go Back/Forward (Swipe Hand Left/Right)
-            hand_movement = palm_x - prev_x
-            if abs(hand_movement) > 120:  # Increased threshold to prevent accidental activation
-                if hand_movement > 0:
+            swipe_threshold = 120  # Pixels for swipe
+            current_time = time.time()
+
+            if abs(hand_movement_x) > swipe_threshold:
+                if hand_movement_x > 0:  # Moving right (Go Forward)
                     if active_gesture != "forward" or (current_time - last_gesture_time) > gesture_cooldown:
-                        pyautogui.hotkey('alt', 'right')  # Go Forward
+                        pyautogui.hotkey('alt', 'right')
                         active_gesture = "forward"
                         last_gesture_time = current_time
-                else:
+                else:  # Moving left (Go Back)
                     if active_gesture != "back" or (current_time - last_gesture_time) > gesture_cooldown:
-                        pyautogui.hotkey('alt', 'left')  # Go Back
+                        pyautogui.hotkey('alt', 'left')
                         active_gesture = "back"
                         last_gesture_time = current_time
 
-            # Copy (Double Tap - Thumb & Index)
-            if distance_click < click_threshold:
-                if active_gesture != "copy" or (current_time - last_gesture_time) > gesture_cooldown:
-                    pyautogui.hotkey('ctrl', 'c')
-                    active_gesture = "copy"
-                    last_gesture_time = current_time
-
-            # Paste (Double Tap - Thumb & Middle)
-            if distance_right_click < click_threshold:
-                if active_gesture != "paste" or (current_time - last_gesture_time) > gesture_cooldown:
-                    pyautogui.hotkey('ctrl', 'v')
-                    active_gesture = "paste"
-                    last_gesture_time = current_time
-
-            # Draw hand landmarks
+            # Draw Hand Landmarks
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-    cv2.imshow("Refined Virtual Mouse", frame)
-
+    # Display the Camera Feed
+    cv2.imshow("Hand Gesture Virtual Mouse", frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
+# Release Resources
 cap.release()
 cv2.destroyAllWindows()

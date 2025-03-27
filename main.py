@@ -59,7 +59,7 @@ while cap.isOpened():
 
             fingers = fingers_up(lm_list)
 
-            # Only move cursor if index finger is up and others are down
+            #  move cursor
             if fingers == [0, 1, 0, 0, 0]:  
                 index_x, index_y = lm_list[8]  # Index Finger Tip
                 curr_x = np.interp(index_x, [100, frame_w - 100], [0, screen_w])
@@ -102,12 +102,12 @@ while cap.isOpened():
             current_time = time.time()
 
             if abs(hand_movement_x) > swipe_threshold:
-                if hand_movement_x > 0:  # Moving right (Go Forward)
+                if hand_movement_x > 0:  #Go Forward
                     if active_gesture != "forward" or (current_time - last_gesture_time) > gesture_cooldown:
                         pyautogui.hotkey('alt', 'right')
                         active_gesture = "forward"
                         last_gesture_time = current_time
-                else:  # Moving left (Go Back)
+                else:  # Go Back
                     if active_gesture != "back" or (current_time - last_gesture_time) > gesture_cooldown:
                         pyautogui.hotkey('alt', 'left')
                         active_gesture = "back"

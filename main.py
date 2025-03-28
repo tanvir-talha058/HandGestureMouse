@@ -20,23 +20,19 @@ prev_x, prev_y = 0, 0
 curr_x, curr_y = 0, 0
 
 # Gesture timing variables
-last_gesture_time = time.time()
-gesture_cooldown = 0.8  # 800ms delay for gestures
-active_gesture = None
+click_cooldown = 0.3  # Prevent multiple clicks within 300ms
+last_click_time = time.time()
 
-def fingers_up(hand_landmarks):
-    """Detect which fingers are up (1 = Up, 0 = Down)."""
-    fingers = [0, 0, 0, 0, 0]  # Thumb, Index, Middle, Ring, Pinky
+def get_finger_openness(hand_landmarks):
+    """Calculate how open each finger is (0-100%)."""
+    openness = [0] * 5  # Thumb, Index, Middle, Ring, Pinky
 
-    # Index Finger - (8 is above 6)
-    fingers[1] = 1 if hand_landmarks[8][1] < hand_landmarks[6][1] else 0
+    # Calculate openness percentage
+    for i, (tip, base) in enumerate([(4, 2), (8, 6), (12, 10), (16, 14), (20, 18)]):
+        tip_y, base_y = hand_landmarks[tip][1], hand_landmarks[base][1]
+        openness[i] = int(max(0, min(100, ((base_y - tip_y) / abs(base_y - hand_landmarks[0][1])) * 100)))
 
-    # Other Fingers - (Closed if tips are below their lower joint)
-    fingers[2] = 1 if hand_landmarks[12][1] < hand_landmarks[10][1] else 0  # Middle
-    fingers[3] = 1 if hand_landmarks[16][1] < hand_landmarks[14][1] else 0  # Ring
-    fingers[4] = 1 if hand_landmarks[20][1] < hand_landmarks[18][1] else 0  # Pinky
-
-    return fingers
+    return openness
 
 while cap.isOpened():
     ret, frame = cap.read()
@@ -53,10 +49,10 @@ while cap.isOpened():
             # Get landmark positions
             lm_list = [(int(lm.x * frame_w), int(lm.y * frame_h)) for lm in hand_landmarks.landmark]
 
-            fingers = fingers_up(lm_list)
+            openness = get_finger_openness(lm_list)
 
-            # Cursor Movement: Only when index finger is up and all others are down
-            if fingers == [0, 1, 0, 0, 0]:  
+            # Cursor Movement: Only when index finger is open and others are closed
+            if openness[1] > 70 and all(op < 30 for i, op in enumerate(openness) if i != 1):  
                 index_x, index_y = lm_list[8]  # Index Finger Tip
                 curr_x = np.interp(index_x, [100, frame_w - 100], [0, screen_w])
                 curr_y = np.interp(index_y, [100, frame_h - 100], [0, screen_h])
@@ -66,57 +62,42 @@ while cap.isOpened():
                 prev_y = (prev_y * (smoothening - 1) + curr_y) / smoothening
                 pyautogui.moveTo(prev_x, prev_y, duration=0.05)
 
-            # Left Click: Thumb + Index Finger Pinch
+            # Pinch Click: Thumb + Index Finger (for left click)
             thumb_tip, index_tip = lm_list[4], lm_list[8]
             pinch_distance = np.linalg.norm(np.array(thumb_tip) - np.array(index_tip))
 
-            if fingers[0] == 1 and fingers[1] == 1 and pinch_distance < 30:
-                pyautogui.click()
-                time.sleep(0.2)  # Prevent multiple clicks
+            current_time = time.time()
+            if openness[0] > 70 and openness[1] > 70 and pinch_distance < 40:  # Pinch Distance Threshold
+                if (current_time - last_click_time) > click_cooldown:  # Prevent multiple clicks
+                    pyautogui.click()
+                    last_click_time = current_time
 
             # Right Click: Thumb + Middle Finger Pinch
             middle_tip = lm_list[12]
             pinch_distance_middle = np.linalg.norm(np.array(thumb_tip) - np.array(middle_tip))
 
-            if fingers[0] == 1 and fingers[2] == 1 and pinch_distance_middle < 30:
-                pyautogui.rightClick()
-                time.sleep(0.2)
+            if openness[0] > 70 and openness[2] > 70 and pinch_distance_middle < 40:
+                if (current_time - last_click_time) > click_cooldown:
+                    pyautogui.rightClick()
+                    last_click_time = current_time
 
             # Scrolling: Move Two Fingers Up/Down
-            if fingers[1] == 1 and fingers[2] == 1:
+            if openness[1] > 70 and openness[2] > 70:
                 scroll_movement = lm_list[8][1] - lm_list[12][1]
                 if abs(scroll_movement) > 20:
                     pyautogui.scroll(-5 if scroll_movement < 0 else 5)
 
-            # Zoom In/Out: Pinch Gesture
-            if pinch_distance < 30:
-                pyautogui.hotkey('ctrl', '+')
-                time.sleep(0.2)
-            elif pinch_distance > 100:
-                pyautogui.hotkey('ctrl', '-')
-                time.sleep(0.2)
-
-            # Swipe Left (Go Back) & Swipe Right (Go Forward)
-            palm_x, palm_y = lm_list[0]
-            hand_movement_x = palm_x - prev_x
-
-            swipe_threshold = 120  # Pixels for swipe
-            current_time = time.time()
-
-            if abs(hand_movement_x) > swipe_threshold:
-                if hand_movement_x > 0:  # Moving right (Go Forward)
-                    if active_gesture != "forward" or (current_time - last_gesture_time) > gesture_cooldown:
-                        pyautogui.hotkey('alt', 'right')
-                        active_gesture = "forward"
-                        last_gesture_time = current_time
-                else:  # Moving left (Go Back)
-                    if active_gesture != "back" or (current_time - last_gesture_time) > gesture_cooldown:
-                        pyautogui.hotkey('alt', 'left')
-                        active_gesture = "back"
-                        last_gesture_time = current_time
-
             # Draw Hand Landmarks
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+            # Display Finger Openness Bar Graph
+            bar_x, bar_y = 20, frame_h - 100
+            bar_width, bar_height = 300, 15
+
+            for i, percent in enumerate(openness):
+                cv2.rectangle(frame, (bar_x + i * 60, bar_y), (bar_x + i * 60 + 50, bar_y + bar_height), (255, 255, 255), 2)
+                cv2.rectangle(frame, (bar_x + i * 60, bar_y), (bar_x + i * 60 + 50, bar_y + int(bar_height * (percent / 100))), (0, 255, 0), -1)
+                cv2.putText(frame, f"{percent}%", (bar_x + i * 60 + 5, bar_y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
     # Display the Camera Feed
     cv2.imshow("Hand Gesture Virtual Mouse", frame)
@@ -126,3 +107,4 @@ while cap.isOpened():
 # Release Resources
 cap.release()
 cv2.destroyAllWindows()
+

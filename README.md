@@ -4,7 +4,6 @@
 
 This project uses **computer vision and hand tracking** to turn your hand into a virtual mouse, allowing you to control your entire PC with hand gestures—just like in Iron Man! 🦾  
 
-
 ---
 
 ## **✨ Features**  

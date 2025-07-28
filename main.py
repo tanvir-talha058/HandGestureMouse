@@ -4,7 +4,7 @@ import pyautogui
 import numpy as np
 import time
 
-# Initialize Video Capture
+# Initialize Video
 cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FPS, 30)  # Optimize FPS
 screen_w, screen_h = pyautogui.size()

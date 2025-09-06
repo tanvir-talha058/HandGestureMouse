@@ -3,8 +3,6 @@ import mediapipe as mp
 import pyautogui
 import numpy as np
 import time
-
-
 # Initialize Video
 cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FPS, 30)  # Optimize FPS

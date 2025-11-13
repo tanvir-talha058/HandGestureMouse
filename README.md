@@ -6,7 +6,6 @@ This project uses **computer vision and hand tracking** to turn your hand into a
 
 ---
 
-
 ## **✨ Features**  
 ✅ **Move Cursor** – Control the mouse by moving your hand  
 ✅ **Left Click** – Pinch thumb & index finger  

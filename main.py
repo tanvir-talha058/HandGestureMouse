@@ -40,6 +40,8 @@ while cap.isOpened():
     if not ret:
         break
 
+
+    
     frame = cv2.flip(frame, 1)  # Mirror the camera
     frame_h, frame_w, _ = frame.shape
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

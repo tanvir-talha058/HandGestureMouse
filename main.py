@@ -4,6 +4,7 @@ import pyautogui
 import numpy as np
 import time
 
+
 # Initialize Videos
 cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FPS, 30)  # Optimize FPS
@@ -13,7 +14,6 @@ screen_w, screen_h = pyautogui.size()
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.6)
 mp_draw = mp.solutions.drawing_utils
-
 
 # Smooth movement parameters
 smoothening = 5

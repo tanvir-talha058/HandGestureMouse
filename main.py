@@ -97,6 +97,7 @@ while cap.isOpened():
             bar_x, bar_y = 20, frame_h - 100
             bar_width, bar_height = 300, 15
 
+            \
             for i, percent in enumerate(openness):
                 cv2.rectangle(frame, (bar_x + i * 60, bar_y), (bar_x + i * 60 + 50, bar_y + bar_height), (255, 255, 255), 2)
                 cv2.rectangle(frame, (bar_x + i * 60, bar_y), (bar_x + i * 60 + 50, bar_y + int(bar_height * (percent / 100))), (0, 255, 0), -1)
